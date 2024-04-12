@@ -18,6 +18,7 @@ package provisioning
 
 import (
 	"context"
+	"knative.dev/pkg/logging"
 	"time"
 
 	"sigs.k8s.io/karpenter/pkg/operator/options"
@@ -64,12 +65,15 @@ func (b *Batcher) Wait(ctx context.Context) bool {
 		case <-b.trigger:
 			// correct way to reset an active timer per docs
 			if !idle.Stop() {
+				logging.FromContext(ctx).Debugf("Jigisha 10 seconds timer not over so reset")
 				<-idle.C
 			}
 			idle.Reset(options.FromContext(ctx).BatchIdleDuration)
 		case <-timeout.C:
+			logging.FromContext(ctx).Debugf("Jigisha set value to 90s")
 			return true
 		case <-idle.C:
+			logging.FromContext(ctx).Debugf("Jigisha set value to 10s")
 			return true
 		}
 	}
