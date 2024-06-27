@@ -168,7 +168,8 @@ func HasDoNotDisrupt(pod *v1.Pod) bool {
 	if pod.Annotations == nil {
 		return false
 	}
-	return pod.Annotations[v1beta1.DoNotDisruptAnnotationKey] == "true"
+	_, found := pod.Annotations[v1beta1.DoNotDisruptAnnotationKey]
+	return found
 }
 
 // ToleratesDisruptionNoScheduleTaint returns true if the pod tolerates karpenter.sh/disruption:NoSchedule=Disrupting taint
