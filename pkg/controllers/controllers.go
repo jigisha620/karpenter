@@ -21,6 +21,8 @@ import (
 	"k8s.io/utils/clock"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	nodepoolreadiness "sigs.k8s.io/karpenter/pkg/controllers/nodepool/readiness"
+
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/controllers/disruption"
 	"sigs.k8s.io/karpenter/pkg/controllers/disruption/orchestration"
@@ -70,6 +72,7 @@ func NewControllers(
 		metricspod.NewController(kubeClient),
 		metricsnodepool.NewController(kubeClient),
 		metricsnode.NewController(cluster),
+		nodepoolreadiness.NewController(kubeClient, cloudProvider),
 		nodepoolcounter.NewController(kubeClient, cluster),
 		nodeclaimconsistency.NewController(clock, kubeClient, recorder),
 		nodeclaimlifecycle.NewController(clock, kubeClient, cloudProvider, recorder),

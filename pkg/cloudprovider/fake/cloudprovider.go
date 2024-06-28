@@ -23,6 +23,10 @@ import (
 	"sort"
 	"sync"
 
+	"sigs.k8s.io/karpenter/pkg/test/v1test1"
+
+	"github.com/awslabs/operatorpkg/status"
+
 	"github.com/samber/lo"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -262,6 +266,8 @@ func (c *CloudProvider) Name() string {
 	return "fake"
 }
 
-func (c *CloudProvider) GetSupportedNodeClasses() []schema.GroupVersionKind {
-	return c.NodeClassGroupVersionKind
+func (c *CloudProvider) GetSupportedNodeClasses() []status.Object {
+	nodeClasses := make([]status.Object, 1)
+	nodeClasses[0] = status.Object(&v1test1.TestNodeClass{})
+	return nodeClasses
 }

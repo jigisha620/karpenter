@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awslabs/operatorpkg/status"
+
 	"github.com/awslabs/operatorpkg/singleton"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/samber/lo"
@@ -225,6 +227,10 @@ func (p *Provisioner) NewScheduler(ctx context.Context, pods []*v1.Pod, stateNod
 	instanceTypes := map[string][]*cloudprovider.InstanceType{}
 	domains := map[string]sets.Set[string]{}
 	for _, nodePool := range nodePoolList.Items {
+		if !nodePool.StatusConditions().IsTrue(status.ConditionReady) {
+			log.FromContext(ctx).WithValues("NodePool", klog.KRef("", nodePool.Name)).Info("skipping, nodePool not ready")
+			continue
+		}
 		// Get instance type options
 		instanceTypeOptions, err := p.cloudProvider.GetInstanceTypes(ctx, lo.ToPtr(nodePool))
 		if err != nil {

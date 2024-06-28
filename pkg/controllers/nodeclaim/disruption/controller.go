@@ -19,6 +19,8 @@ package disruption
 import (
 	"context"
 
+	"github.com/awslabs/operatorpkg/object"
+
 	"go.uber.org/multierr"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -115,8 +117,9 @@ func (c *Controller) Reconcile(ctx context.Context, nodeClaim *v1beta1.NodeClaim
 
 func (c *Controller) Register(_ context.Context, m manager.Manager) error {
 	builder := controllerruntime.NewControllerManagedBy(m)
-	for _, ncGVK := range c.cloudProvider.GetSupportedNodeClasses() {
+	for _, supportedNC := range c.cloudProvider.GetSupportedNodeClasses() {
 		nodeclass := &unstructured.Unstructured{}
+		ncGVK := object.GVK(supportedNC)
 		nodeclass.SetGroupVersionKind(ncGVK)
 		builder = builder.Watches(
 			nodeclass,
