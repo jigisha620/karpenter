@@ -18,6 +18,8 @@ package readiness
 
 import (
 	"context"
+	"github.com/awslabs/operatorpkg/object"
+	"github.com/samber/lo"
 	logger "log"
 
 	"github.com/awslabs/operatorpkg/status"
@@ -57,16 +59,25 @@ func (c *Controller) Reconcile(ctx context.Context, nodePool *v1.NodePool) (reco
 	if len(supportedNC) == 0 {
 		logger.Fatal("no supported node classes found for the cloud provider")
 	}
-	nodeClass, err := c.getNodeClass(ctx, nodePool, supportedNC)
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-	if nodeClass == nil {
-		nodePool.StatusConditions().SetFalse(v1.ConditionTypeNodeClassReady, "NodeClassNotFound", "NodeClass not found on cluster")
-	} else if !nodeClass.GetDeletionTimestamp().IsZero() {
-		nodePool.StatusConditions().SetFalse(v1.ConditionTypeNodeClassReady, "NodeClassTerminating", "NodeClass is Terminating")
+	var err error
+	nodeClass, ok := lo.Find(supportedNC, func(nc status.Object) bool {
+		ncGVK := object.GVK(nc)
+		return ncGVK.Group == nodePool.Spec.Template.Spec.NodeClassRef.Group && ncGVK.Kind == nodePool.Spec.Template.Spec.NodeClassRef.Kind
+	})
+	if !ok {
+		nodePool.StatusConditions().SetFalse(v1.ConditionTypeNodeClassReady, "NodeClassNotSupported", "NodeClass referenced in nodePool not found")
 	} else {
-		c.setReadyCondition(nodePool, nodeClass)
+		nodeClass, err := c.getNodeClass(ctx, nodePool, nodeClass)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		if nodeClass == nil {
+			nodePool.StatusConditions().SetFalse(v1.ConditionTypeNodeClassReady, "NodeClassNotFound", "NodeClass not found on cluster")
+		} else if !nodeClass.GetDeletionTimestamp().IsZero() {
+			nodePool.StatusConditions().SetFalse(v1.ConditionTypeNodeClassReady, "NodeClassTerminating", "NodeClass is Terminating")
+		} else {
+			c.setReadyCondition(nodePool, nodeClass)
+		}
 	}
 	if !equality.Semantic.DeepEqual(stored, nodePool) {
 		if err = c.kubeClient.Status().Update(ctx, nodePool); client.IgnoreNotFound(err) != nil {
@@ -78,8 +89,7 @@ func (c *Controller) Reconcile(ctx context.Context, nodePool *v1.NodePool) (reco
 	}
 	return reconcile.Result{}, nil
 }
-func (c *Controller) getNodeClass(ctx context.Context, nodePool *v1.NodePool, supportedNC []status.Object) (status.Object, error) {
-	nodeClass := supportedNC[0]
+func (c *Controller) getNodeClass(ctx context.Context, nodePool *v1.NodePool, nodeClass status.Object) (status.Object, error) {
 	if err := c.kubeClient.Get(ctx, client.ObjectKey{Name: nodePool.Spec.Template.Spec.NodeClassRef.Name}, nodeClass); err != nil {
 		if errors.IsNotFound(err) {
 			return nil, nil
