@@ -73,7 +73,7 @@ type EphemeralVolumeTemplateOptions struct {
 }
 
 var (
-	DefaultImage = "public.ecr.aws/eks-distro/kubernetes/pause:3.2"
+	DefaultImage = "public.ecr.aws/docker/library/hello-world:latest"
 )
 
 // Pod creates a test pod with defaults that can be overridden by PodOptions.
