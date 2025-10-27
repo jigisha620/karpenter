@@ -72,7 +72,6 @@ var _ = BeforeEach(func() {
 			},
 		})
 	}
-	// no limits!!! to the moon!!!
 	nodePool.Spec.Limits = v1.Limits{}
 	nodePool.Spec.Disruption.Budgets = []v1.Budget{{Nodes: "100%"}}
 	// Set expiration to some high value so that there's age-based ordering for consolidation tests
