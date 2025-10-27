@@ -1,4 +1,4 @@
-name: kind-e2e
+name: kind-perf-e2e
 on:
   push:
     branches: [main]
@@ -9,15 +9,16 @@ on:
       - completed
   workflow_dispatch:
 jobs:
-  kind-e2e:
+  kind-perf-e2e:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     permissions:
       issues: write
     strategy:
       fail-fast: false
       matrix:
-        k8sVersion: ["1.28.x", "1.29.x", "1.30.x", "1.31.x", "1.32.x", "1.33.x", "1.34.x"]
+        suite:
+          - name: Performance
+          - name: Regression
     uses: ./.github/workflows/e2e.yaml
-    with: 
-      k8s_version: ${{ matrix.k8sVersion }}
-      suite: "Regression"
+    with:
+      suite: ${{ matrix.suite.name }}
