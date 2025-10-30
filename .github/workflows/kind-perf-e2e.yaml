@@ -9,6 +9,16 @@ on:
       - completed
   workflow_dispatch:
 jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Debug git-ref values
+      run: |
+        echo "Event name: ${{ github.event_name }}"
+        echo "GitHub SHA: ${{ github.sha }}"
+        echo "Workflow run head SHA: ${{ github.event.workflow_run.head_sha }}"
+        echo "Computed git-ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}"
+        echo "Workflow run event: ${{ toJson(github.event.workflow_run) }}"
   kind-perf-e2e:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     permissions:
@@ -21,3 +31,4 @@ jobs:
     uses: ./.github/workflows/e2e.yaml
     with:
       suite: ${{ matrix.suite.name }}
+      git-ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
