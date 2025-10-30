@@ -1,7 +1,7 @@
 # Karpenter - Static Capacity
 
 ## Background
-Karpenter currently operates as a dynamic cluster autoscaler, automatically adjusting node counts based on pending pod demand. However, several important use cases require maintaining a fixed set of nodes such as:
+Karpenter currently operates as a dynamic CAS, automatically adjusting node counts based on pending pod demand. However, several important use cases require maintaining a fixed set of nodes such as:
 
 1. Performance-critical applications where just-in-time provisioning latency is unacceptable
 2. Workloads that require predictable, always-available capacity
