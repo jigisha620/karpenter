@@ -459,11 +459,15 @@ func (s *Scheduler) Solve(ctx context.Context, pods []*corev1.Pod) (Results, err
 	}
 
 	q := NewQueue(pods, s.cachedPodData)
+	totalPods := len(q.pods)
+	podsEvaluated := 0
 
 	startTime := s.clock.Now()
 	for {
 		UnfinishedWorkSeconds.Set(s.clock.Since(startTime).Seconds(), map[string]string{ControllerLabel: injection.GetControllerName(ctx), schedulingIDLabel: string(s.uuid)})
 		QueueDepth.Set(float64(len(q.pods)), map[string]string{ControllerLabel: injection.GetControllerName(ctx), schedulingIDLabel: string(s.uuid)})
+
+		podsEvaluated++
 
 		// Try the next pod
 		pod, ok := q.Pop()
@@ -475,7 +479,7 @@ func (s *Scheduler) Solve(ctx context.Context, pods []*corev1.Pod) (Results, err
 		// in the queue and give ourselves another chance to schedule it later
 		if err := s.trySchedule(ctx, pod.DeepCopy()); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
-				log.FromContext(ctx).V(1).WithValues("duration", s.clock.Since(startTime).Truncate(time.Second), "scheduling-id", string(s.uuid)).Info("scheduling simulation timed out")
+				log.FromContext(ctx).V(1).WithValues("duration", s.clock.Since(startTime).Truncate(time.Second), "scheduling-id", string(s.uuid), "pods-evaluated", podsEvaluated, "pods-total", totalPods).Info("scheduling simulation timed out")
 				break
 			}
 			podErrors[pod] = err
@@ -489,6 +493,8 @@ func (s *Scheduler) Solve(ctx context.Context, pods []*corev1.Pod) (Results, err
 			delete(podErrors, pod)
 		}
 	}
+	PodsEvaluated.Set(float64(podsEvaluated), map[string]string{ControllerLabel: injection.GetControllerName(ctx), schedulingIDLabel: string(s.uuid)})
+
 	UnfinishedWorkSeconds.Delete(map[string]string{ControllerLabel: injection.GetControllerName(ctx), schedulingIDLabel: string(s.uuid)})
 	for _, m := range s.newNodeClaims {
 		m.FinalizeScheduling(s.draDriversForNodeClaim(m)...)

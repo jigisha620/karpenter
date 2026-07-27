@@ -57,6 +57,20 @@ var (
 			schedulingIDLabel,
 		},
 	)
+	PodsEvaluated = opmetrics.NewPrometheusGauge(
+		crmetrics.Registry,
+		prometheus.GaugeOpts{
+			Namespace: metrics.Namespace,
+			Subsystem: schedulerSubsystem,
+			Name:      "pods_evaluated",
+			Help:      "The number of pods evaluated in the last scheduling simulation before completion or timeout.",
+		},
+		[]string{
+			ControllerLabel,
+			schedulingIDLabel,
+		},
+	)
+
 	UnfinishedWorkSeconds = opmetrics.NewPrometheusGauge(
 		crmetrics.Registry,
 		prometheus.GaugeOpts{
