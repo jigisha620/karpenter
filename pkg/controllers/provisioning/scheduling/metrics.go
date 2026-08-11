@@ -28,6 +28,8 @@ const (
 	ControllerLabel    = "controller"
 	schedulingIDLabel  = "scheduling_id"
 	schedulerSubsystem = "scheduler"
+	ownerLabel         = "owner"
+	namespaceLabel     = "namespace"
 )
 
 var (
@@ -104,5 +106,15 @@ var (
 			ControllerLabel,
 			"zone",
 		},
+	)
+
+	PredictionsAppliedTotal = opmetrics.NewPrometheusCounter(
+		crmetrics.Registry,
+		prometheus.CounterOpts{
+			Namespace: metrics.Namespace,
+			Name:      "predictions_applied_total",
+			Help:      "Number of pods whose resource requests were predicted using VPA recommendations during scheduling.",
+		},
+		[]string{namespaceLabel, ownerLabel},
 	)
 )

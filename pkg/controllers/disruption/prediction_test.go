@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/cloudprovider/fake"
 	"sigs.k8s.io/karpenter/pkg/controllers/disruption"
+	pscheduling "sigs.k8s.io/karpenter/pkg/controllers/provisioning/scheduling"
 	"sigs.k8s.io/karpenter/pkg/scheduling"
 	"sigs.k8s.io/karpenter/pkg/state/prediction"
 	"sigs.k8s.io/karpenter/pkg/test"
@@ -138,6 +139,10 @@ var _ = Describe("Prediction", func() {
 		ExpectSingletonReconciled(ctx, dc)
 
 		Expect(queue.GetCommands()).To(BeEmpty())
+		ExpectMetricCounterValue(pscheduling.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     rs.Name,
+		})
 	})
 
 	It("should consolidate to a cheaper node when both workload and daemon predictions fit within capacity", func() {
@@ -211,6 +216,14 @@ var _ = Describe("Prediction", func() {
 		Expect(cmds).To(HaveLen(1))
 		Expect(cmds[0].Replacements).To(HaveLen(1))
 		Expect(cmds[0].Replacements[0].InstanceTypeOptions).To(ContainElement(HaveField("Name", "cheap")))
+		ExpectMetricCounterValue(pscheduling.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": workloadPod.Namespace,
+			"owner":     rs.Name,
+		})
+		ExpectMetricCounterValue(pscheduling.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": dsPod.Namespace,
+			"owner":     ds.Name,
+		})
 	})
 
 	It("should consolidate more aggressively when VPA predicts lower requests than current", func() {
@@ -254,6 +267,10 @@ var _ = Describe("Prediction", func() {
 		Expect(cmds).To(HaveLen(1))
 		Expect(cmds[0].Replacements).To(HaveLen(1))
 		Expect(cmds[0].Replacements[0].InstanceTypeOptions).To(ContainElement(HaveField("Name", "cheap")))
+		ExpectMetricCounterValue(pscheduling.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     rs.Name,
+		})
 	})
 
 	It("should use current requests for pods without predictions and predicted requests for those with", func() {
@@ -313,6 +330,15 @@ var _ = Describe("Prediction", func() {
 		ExpectSingletonReconciled(ctx, dc)
 
 		Expect(queue.GetCommands()).To(BeEmpty())
+		ExpectMetricCounterValue(pscheduling.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": podA.Namespace,
+			"owner":     rsA.Name,
+		})
+		_, ok := FindMetricWithLabelValues("karpenter_predictions_applied_total", map[string]string{
+			"namespace": podB.Namespace,
+			"owner":     rsB.Name,
+		})
+		Expect(ok).To(BeFalse())
 	})
 
 	It("should replace a drifted node using predicted requests for replacement node sizing", func() {
@@ -359,5 +385,9 @@ var _ = Describe("Prediction", func() {
 		Expect(cmds).To(HaveLen(1))
 		Expect(cmds[0].Replacements).To(HaveLen(1))
 		Expect(cmds[0].Replacements[0].InstanceTypeOptions).To(ContainElement(HaveField("Name", "expensive")))
+		ExpectMetricCounterValue(pscheduling.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     rs.Name,
+		})
 	})
 })
