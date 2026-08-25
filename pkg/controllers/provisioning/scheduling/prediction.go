@@ -37,21 +37,23 @@ var podCountOne = resource.MustParse("1")
 // ownerResolution stores the result of a resolveTarget call for caching.
 type ownerResolution struct {
 	uid   types.UID
+	name  string
 	found bool
 }
 
 //nolint:gocyclo
-func resolveTarget(ctx context.Context, c client.Client, pod *corev1.Pod, cachedOwnerResolutions map[types.UID]ownerResolution) (types.UID, bool) {
+func resolveTarget(ctx context.Context, c client.Client, pod *corev1.Pod, cachedOwnerResolutions map[types.UID]ownerResolution) (types.UID, string, bool) {
 	for _, ref := range pod.OwnerReferences {
 		if ref.Controller == nil || !*ref.Controller {
 			continue
 		}
 		if cachedOwnerResolutions != nil {
 			if entry, ok := cachedOwnerResolutions[ref.UID]; ok {
-				return entry.uid, entry.found
+				return entry.uid, entry.name, entry.found
 			}
 		}
 		var targetUID types.UID
+		var targetName string
 		var found bool
 		switch ref.Kind {
 		case "ReplicaSet":
@@ -63,19 +65,23 @@ func resolveTarget(ctx context.Context, c client.Client, pod *corev1.Pod, cached
 			for _, rsRef := range rs.OwnerReferences {
 				if rsRef.Controller != nil && *rsRef.Controller && rsRef.Kind == "Deployment" {
 					targetUID = rsRef.UID
+					targetName = rsRef.Name
 					found = true
 					break
 				}
 			}
 			if !found {
 				targetUID = ref.UID
+				targetName = ref.Name
 				found = true
 			}
 		case "StatefulSet":
 			targetUID = ref.UID
+			targetName = ref.Name
 			found = true
 		case "DaemonSet":
 			targetUID = ref.UID
+			targetName = ref.Name
 			found = true
 		case "Job":
 			job := &metav1.PartialObjectMetadata{}
@@ -86,24 +92,27 @@ func resolveTarget(ctx context.Context, c client.Client, pod *corev1.Pod, cached
 			for _, jobRef := range job.OwnerReferences {
 				if jobRef.Controller != nil && *jobRef.Controller && jobRef.Kind == "CronJob" {
 					targetUID = jobRef.UID
+					targetName = jobRef.Name
 					found = true
 					break
 				}
 			}
 			if !found {
 				targetUID = ref.UID
+				targetName = ref.Name
 				found = true
 			}
 		case "ReplicationController":
 			targetUID = ref.UID
+			targetName = ref.Name
 			found = true
 		}
 		if cachedOwnerResolutions != nil {
-			cachedOwnerResolutions[ref.UID] = ownerResolution{uid: targetUID, found: found}
+			cachedOwnerResolutions[ref.UID] = ownerResolution{uid: targetUID, name: targetName, found: found}
 		}
-		return targetUID, found
+		return targetUID, targetName, found
 	}
-	return "", false
+	return "", "", false
 }
 
 // PredictedRequests returns the pod's resource requests with VPA predictions applied.
@@ -115,7 +124,7 @@ func PredictedRequests(ctx context.Context, c client.Client, store *prediction.S
 	if store == nil || store.Len() == 0 {
 		return resources.RequestsForPods(pod)
 	}
-	targetUID, ok := resolveTarget(ctx, c, pod, cachedOwnerResolutions)
+	targetUID, ownerName, ok := resolveTarget(ctx, c, pod, cachedOwnerResolutions)
 	if !ok {
 		return resources.RequestsForPods(pod)
 	}
@@ -125,6 +134,10 @@ func PredictedRequests(ctx context.Context, c client.Client, store *prediction.S
 	}
 	result := computePredictedRequests(pod, pred)
 	result[corev1.ResourcePods] = podCountOne
+	PredictionsAppliedTotal.Inc(map[string]string{
+		namespaceLabel: pod.Namespace,
+		ownerLabel:     ownerName,
+	})
 	return result
 }
 
