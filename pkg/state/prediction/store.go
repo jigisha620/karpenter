@@ -41,6 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"sigs.k8s.io/karpenter/pkg/metrics"
 	"sigs.k8s.io/karpenter/pkg/utils/resources"
 )
 
@@ -280,6 +281,10 @@ func (s *Store) PredictedRequests(ctx context.Context, cachedOwnerResolutions Ow
 		if !ok {
 			return resources.RequestsForPods(pod)
 		}
+		PredictionsAppliedTotal.Inc(map[string]string{
+			metrics.NamespaceLabel: pod.Namespace,
+			metrics.OwnerLabel:     workload.Name,
+		})
 		result := resources.RequestsForSpec(&corev1.PodSpec{
 			Containers:     applyPredictions(pod.Spec.Containers, pred),
 			InitContainers: applyPredictions(pod.Spec.InitContainers, pred),

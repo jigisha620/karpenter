@@ -81,6 +81,11 @@ var _ = Describe("PredictedRequests", func() {
 		})
 		result := store.PredictedRequests(ctx, nil, pod)
 		Expect(result.Cpu().Cmp(resource.MustParse("100m"))).To(Equal(0))
+		_, ok := FindMetricWithLabelValues("karpenter_predictions_applied_total", map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     dep.Name,
+		})
+		Expect(ok).To(BeFalse())
 	})
 
 	It("should resolve pod through replicaset to deployment and replace requests with predicted values", func() {
@@ -123,6 +128,10 @@ var _ = Describe("PredictedRequests", func() {
 		Expect(result.Cpu().Cmp(resource.MustParse("600m"))).To(Equal(0))
 		Expect(result.Memory().Cmp(resource.MustParse("256Mi"))).To(Equal(0))
 		Expect(result.Pods().Cmp(resource.MustParse("1"))).To(Equal(0))
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     dep.Name,
+		})
 	})
 
 	It("should resolve pods sharing an owner from the cached owner resolution", func() {
@@ -208,6 +217,10 @@ var _ = Describe("PredictedRequests", func() {
 		)
 		result := store.PredictedRequests(ctx, nil, pod)
 		Expect(result.Memory().Cmp(resource.MustParse("1Gi"))).To(Equal(0))
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     ss.Name,
+		})
 	})
 
 	It("should resolve pod to daemonset directly", func() {
@@ -233,6 +246,10 @@ var _ = Describe("PredictedRequests", func() {
 		)
 		result := store.PredictedRequests(ctx, nil, pod)
 		Expect(result.Cpu().Cmp(resource.MustParse("250m"))).To(Equal(0))
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     ds.Name,
+		})
 	})
 
 	It("should resolve pod through job to cronjob", func() {
@@ -269,6 +286,10 @@ var _ = Describe("PredictedRequests", func() {
 		)
 		result := store.PredictedRequests(ctx, nil, pod)
 		Expect(result.Cpu().Cmp(resource.MustParse("2"))).To(Equal(0))
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     "etl",
+		})
 	})
 
 	It("should resolve pod to standalone job with no cronjob owner", func() {
@@ -300,6 +321,10 @@ var _ = Describe("PredictedRequests", func() {
 		)
 		result := store.PredictedRequests(ctx, nil, pod)
 		Expect(result.Memory().Cmp(resource.MustParse("4Gi"))).To(Equal(0))
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     job.Name,
+		})
 	})
 
 	It("should resolve a job's pod to the job without looking it up when cronjobs aren't targeted", func() {
@@ -399,6 +424,10 @@ var _ = Describe("PredictedRequests", func() {
 		)
 		result := store.PredictedRequests(ctx, nil, pod)
 		Expect(result.Cpu().Cmp(resource.MustParse("300m"))).To(Equal(0))
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     rs.Name,
+		})
 	})
 
 	It("should return currentRequests when ReplicaSet owner is not found and keep them for the run", func() {
@@ -426,6 +455,11 @@ var _ = Describe("PredictedRequests", func() {
 		ExpectApplied(ctx, env.Client, rs)
 		result = store.PredictedRequests(ctx, cachedOwnerResolutions, pod)
 		Expect(result.Cpu().Cmp(resource.MustParse("100m"))).To(Equal(0))
+		_, ok := FindMetricWithLabelValues("karpenter_predictions_applied_total", map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     "ghost-rs-deleted",
+		})
+		Expect(ok).To(BeFalse())
 	})
 
 	It("should apply predictions per-container and sum them for multi-container pods", func() {
