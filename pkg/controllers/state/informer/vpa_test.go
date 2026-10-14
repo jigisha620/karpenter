@@ -76,6 +76,7 @@ var _ = BeforeEach(func() {
 	cluster = state.NewCluster(env.Clock, env.Client, fake.NewCloudProvider())
 	recorder = test.NewEventRecorder()
 	controller = informer.NewVPAController(env.Client, store, cluster, recorder)
+	informer.PredictionsStored.Reset()
 
 	dep = test.Deployment(test.DeploymentOptions{
 		ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: "default"},
@@ -355,6 +356,22 @@ var _ = Describe("VPA Controller", func() {
 		ExpectApplied(ctx, env.Client, vpa)
 		ExpectSingletonReconciled(ctx, controller)
 		Expect(cluster.ConsolidationState()).To(Equal(consolidationState))
+	})
+
+	It("should report a VPA in the predictions_stored metric while its prediction is stored", func() {
+		vpa := test.VerticalPodAutoscaler(test.VerticalPodAutoscalerOptions{TargetRef: targetRef})
+		ExpectApplied(ctx, env.Client, vpa)
+		labels := map[string]string{"namespace": vpa.Namespace, "name": vpa.Name}
+		test.UpdateVPARecommendation(ctx, env.Client, vpa, map[string]corev1.ResourceList{
+			"main": {corev1.ResourceCPU: resource.MustParse("500m")},
+		})
+		ExpectSingletonReconciled(ctx, controller)
+		ExpectMetricGaugeValue(informer.PredictionsStored, 1, labels)
+
+		ExpectDeleted(ctx, env.Client, vpa)
+		ExpectSingletonReconciled(ctx, controller)
+		_, ok := FindMetricWithLabelValues("karpenter_predictions_stored", labels)
+		Expect(ok).To(BeFalse())
 	})
 
 	It("should keep a prediction for a target that's deleted and recreated with the same name", func() {

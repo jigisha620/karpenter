@@ -81,6 +81,9 @@ const (
 	ConsolidationPolicyLabel = "consolidation_policy"
 	TerminationModeLabel     = "termination_mode"
 	ControllerLabel          = "controller"
+	NamespaceLabel           = "namespace"
+	OwnerLabel               = "owner"
+	NameLabel                = "name"
 )
 
 // Shared core metric dimensions. Provider packages and core controllers should
@@ -160,6 +163,19 @@ var (
 				Help: "Consolidate any node that can be removed or replaced to reduce cost.",
 			},
 		},
+	}
+	// PredictionNamespace and PredictionOwner identify the workload a resource prediction is for.
+	PredictionNamespace = opmetrics.Label{
+		Name: NamespaceLabel,
+		Help: "The namespace of the workload the prediction is for.",
+	}
+	PredictionOwner = opmetrics.Label{
+		Name: OwnerLabel,
+		Help: "The name of the workload the prediction is for.",
+	}
+	PredictionSource = opmetrics.Label{
+		Name: NameLabel,
+		Help: "The name of the VerticalPodAutoscaler providing the prediction.",
 	}
 	TerminationMode = opmetrics.Label{
 		Name: TerminationModeLabel,

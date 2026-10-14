@@ -37,6 +37,7 @@ import (
 
 	"sigs.k8s.io/karpenter/pkg/controllers/state"
 	"sigs.k8s.io/karpenter/pkg/events"
+	"sigs.k8s.io/karpenter/pkg/metrics"
 	"sigs.k8s.io/karpenter/pkg/operator/injection"
 
 	"sigs.k8s.io/karpenter/pkg/state/prediction"
@@ -75,6 +76,7 @@ func (c *VPAController) Reconcile(ctx context.Context) (reconciler.Result, error
 			if c.store.Reset() {
 				c.cluster.MarkUnconsolidated()
 			}
+			PredictionsStored.Reset()
 			c.lastSeen = make(map[types.NamespacedName]string)
 			c.store.MarkHydrated()
 			return reconciler.Result{RequeueAfter: 1 * time.Minute}, nil
@@ -107,6 +109,7 @@ func (c *VPAController) deleteUnseen(seen map[types.NamespacedName]bool) bool {
 	changed := false
 	for key := range c.lastSeen {
 		if !seen[key] {
+			PredictionsStored.Delete(map[string]string{metrics.NamespaceLabel: key.Namespace, metrics.NameLabel: key.Name})
 			changed = c.store.Delete(key) || changed
 			delete(c.lastSeen, key)
 		}
@@ -122,6 +125,7 @@ func (c *VPAController) processVPA(vpa *vpav1.VerticalPodAutoscaler, key types.N
 		p = computePrediction(vpa)
 	}
 	if p == nil {
+		PredictionsStored.Delete(map[string]string{metrics.NamespaceLabel: key.Namespace, metrics.NameLabel: key.Name})
 		return c.store.Delete(key)
 	}
 	workload := prediction.WorkloadReference{
@@ -130,8 +134,10 @@ func (c *VPAController) processVPA(vpa *vpav1.VerticalPodAutoscaler, key types.N
 	}
 	if !prediction.SupportedTargets.Has(workload.GroupKind) {
 		c.recorder.Publish(PredictionTargetUnsupportedEvent(vpa))
+		PredictionsStored.Delete(map[string]string{metrics.NamespaceLabel: key.Namespace, metrics.NameLabel: key.Name})
 		return c.store.Delete(key)
 	}
+	PredictionsStored.Set(1, map[string]string{metrics.NamespaceLabel: key.Namespace, metrics.NameLabel: key.Name})
 	return c.store.Set(key, workload, p, vpa.CreationTimestamp.Time)
 }
 

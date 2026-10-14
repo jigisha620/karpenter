@@ -149,8 +149,17 @@ var _ = Describe("Prediction", func() {
 
 			if !expectConsolidation {
 				Expect(queue.GetCommands()).To(BeEmpty())
+				ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+					"namespace": pod.Namespace,
+					"owner":     rs.Name,
+				})
 				return
 			}
+			_, ok := FindMetricWithLabelValues("karpenter_predictions_applied_total", map[string]string{
+				"namespace": pod.Namespace,
+				"owner":     rs.Name,
+			})
+			Expect(ok).To(BeFalse())
 			cmds := queue.GetCommands()
 			Expect(cmds).To(HaveLen(1))
 			Expect(cmds[0].Replacements).To(HaveLen(1))
@@ -231,6 +240,14 @@ var _ = Describe("Prediction", func() {
 		Expect(cmds).To(HaveLen(1))
 		Expect(cmds[0].Replacements).To(HaveLen(1))
 		Expect(cmds[0].Replacements[0].InstanceTypeOptions).To(ContainElement(HaveField("Name", "cheap")))
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": workloadPod.Namespace,
+			"owner":     rs.Name,
+		})
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": dsPod.Namespace,
+			"owner":     ds.Name,
+		})
 	})
 
 	It("should consolidate more aggressively when VPA predicts lower requests than current", func() {
@@ -274,6 +291,10 @@ var _ = Describe("Prediction", func() {
 		Expect(cmds).To(HaveLen(1))
 		Expect(cmds[0].Replacements).To(HaveLen(1))
 		Expect(cmds[0].Replacements[0].InstanceTypeOptions).To(ContainElement(HaveField("Name", "cheap")))
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     rs.Name,
+		})
 	})
 
 	It("should use current requests for pods without predictions and predicted requests for those with", func() {
@@ -333,6 +354,15 @@ var _ = Describe("Prediction", func() {
 		ExpectSingletonReconciled(ctx, dc)
 
 		Expect(queue.GetCommands()).To(BeEmpty())
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": podA.Namespace,
+			"owner":     rsA.Name,
+		})
+		_, ok := FindMetricWithLabelValues("karpenter_predictions_applied_total", map[string]string{
+			"namespace": podB.Namespace,
+			"owner":     rsB.Name,
+		})
+		Expect(ok).To(BeFalse())
 	})
 
 	It("should replace a drifted node using predicted requests for replacement node sizing", func() {
@@ -379,6 +409,10 @@ var _ = Describe("Prediction", func() {
 		Expect(cmds).To(HaveLen(1))
 		Expect(cmds[0].Replacements).To(HaveLen(1))
 		Expect(cmds[0].Replacements[0].InstanceTypeOptions).To(ContainElement(HaveField("Name", "expensive")))
+		ExpectMetricCounterValue(prediction.PredictionsAppliedTotal, 1, map[string]string{
+			"namespace": pod.Namespace,
+			"owner":     rs.Name,
+		})
 	})
 
 	It("should wait for the prediction store to hydrate before disrupting when the PredictionEnabled feature gate is enabled", func() {
