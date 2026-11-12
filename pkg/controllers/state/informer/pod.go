@@ -21,16 +21,22 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/util/workqueue"
 	controllerruntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"sigs.k8s.io/karpenter/pkg/controllers/state"
 	"sigs.k8s.io/karpenter/pkg/operator/injection"
+	"sigs.k8s.io/karpenter/pkg/operator/options"
 	utilscontroller "sigs.k8s.io/karpenter/pkg/utils/controller"
+	"sigs.k8s.io/karpenter/pkg/utils/resources"
 )
 
 const (
@@ -79,9 +85,44 @@ func (c *PodController) Reconcile(ctx context.Context, req reconcile.Request) (r
 }
 
 func (c *PodController) Register(ctx context.Context, m manager.Manager) error {
-	return controllerruntime.NewControllerManagedBy(m).
+	b := controllerruntime.NewControllerManagedBy(m).
 		Named(c.Name()).
 		For(&v1.Pod{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: utilscontroller.LinearScaleReconciles(utilscontroller.CPUCount(ctx), minReconciles, maxReconciles)}).
-		Complete(c)
+		WithOptions(controller.Options{MaxConcurrentReconciles: utilscontroller.LinearScaleReconciles(utilscontroller.CPUCount(ctx), minReconciles, maxReconciles)})
+	if options.FromContext(ctx).FeatureGates.PodResourceHints {
+		b = b.Watches(&v1.Pod{}, PodResourceHintsEventHandler(c.cluster))
+	}
+	return b.Complete(c)
+}
+
+// PodResourceHintsEventHandler marks the cluster unconsolidated when a pod's status.resourceHints change, or when a
+// bound pod's effective requests change (e.g. an in-place resize), so consolidation re-evaluates. It enqueues nothing;
+// the primary pod watch reconciles the pod.
+func PodResourceHintsEventHandler(cluster *state.Cluster) handler.EventHandler {
+	return handler.Funcs{
+		UpdateFunc: func(_ context.Context, e event.UpdateEvent, _ workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			oldPod, ok := e.ObjectOld.(*v1.Pod)
+			if !ok {
+				return
+			}
+			newPod, ok := e.ObjectNew.(*v1.Pod)
+			if !ok {
+				return
+			}
+			if PodResourceHintsOrRequestsChanged(oldPod, newPod) {
+				cluster.MarkUnconsolidated()
+			}
+		},
+	}
+}
+
+// PodResourceHintsOrRequestsChanged reports whether consolidation should re-evaluate after a pod update.
+func PodResourceHintsOrRequestsChanged(oldPod, newPod *v1.Pod) bool {
+	if resources.ResourceHintsChanged(oldPod, newPod) {
+		return true
+	}
+	if newPod.Spec.NodeName == "" {
+		return false
+	}
+	return !equality.Semantic.DeepEqual(resources.Ceiling(oldPod).Requests, resources.Ceiling(newPod).Requests)
 }

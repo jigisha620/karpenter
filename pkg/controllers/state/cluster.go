@@ -46,6 +46,7 @@ import (
 	v1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 	"sigs.k8s.io/karpenter/pkg/cloudprovider"
 	"sigs.k8s.io/karpenter/pkg/controllers/node/health"
+	"sigs.k8s.io/karpenter/pkg/operator/options"
 	"sigs.k8s.io/karpenter/pkg/scheduling"
 	nodeclaimutils "sigs.k8s.io/karpenter/pkg/utils/nodeclaim"
 	podutils "sigs.k8s.io/karpenter/pkg/utils/pod"
@@ -459,7 +460,23 @@ func (c *Cluster) UpdatePod(ctx context.Context, pod *corev1.Pod) error {
 		err = c.updateNodeUsageFromPod(ctx, pod)
 	}
 	c.updatePodAntiAffinities(pod)
+	if options.FromContext(ctx).FeatureGates.PodResourceHints {
+		c.refreshDaemonSetPod(pod)
+	}
 	return err
+}
+
+// refreshDaemonSetPod keeps the cached DaemonSet pod current when that same pod is updated, so new-node DaemonSet
+// overhead sees its latest resource hints.
+func (c *Cluster) refreshDaemonSetPod(pod *corev1.Pod) {
+	ref := metav1.GetControllerOfNoCopy(pod)
+	if ref == nil || ref.Kind != "DaemonSet" {
+		return
+	}
+	key := types.NamespacedName{Namespace: pod.Namespace, Name: ref.Name}
+	if cached, ok := c.daemonSetPods.Load(key); ok && cached.(*corev1.Pod).UID == pod.UID {
+		c.daemonSetPods.Store(key, pod.DeepCopy())
+	}
 }
 
 func (c *Cluster) NodeClaimExists(nodeClaimName string) bool {

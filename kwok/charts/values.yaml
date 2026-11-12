@@ -167,6 +167,9 @@ settings:
     # to stop during a replica scale down.
     podDeletionCostManagement: false
     # -- predictionEnabled is ALPHA and is disabled by default.
-    # Setting this to true will enable Karpenter to size nodes using VPA predictions during provisioning and disruption.
+    # Setting this to true will enable Karpenter to size nodes using a registered prediction source during provisioning and disruption.
     predictionEnabled: false
+    # -- podResourceHints is ALPHA and is disabled by default.
+    # Setting this to true will enable Karpenter to read Pod status.resourceHints during provisioning and disruption.
+    podResourceHints: false
 

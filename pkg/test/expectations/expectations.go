@@ -151,6 +151,10 @@ func ExpectApplied(ctx context.Context, c client.Client, objects ...client.Objec
 		deletionTimestampSet := !object.GetDeletionTimestamp().IsZero()
 		current := object.DeepCopyObject().(client.Object)
 		statuscopy := object.DeepCopyObject().(client.Object) // Snapshot the status, since create/update may override
+		var hints []corev1.PodResourceHint
+		if pod, ok := object.(*corev1.Pod); ok {
+			hints = pod.Status.ResourceHints
+		}
 
 		// Create or Update
 		if err := c.Get(ctx, client.ObjectKeyFromObject(current), current); err != nil {
@@ -166,6 +170,12 @@ func ExpectApplied(ctx context.Context, c client.Client, objects ...client.Objec
 		// Update status
 		statuscopy.SetResourceVersion(object.GetResourceVersion())
 		Expect(c.Status().Update(ctx, statuscopy)).To(Or(Succeed(), MatchError("the server could not find the requested resource"))) // Some objects do not have a status
+		// status.resourceHints are only written through the pods/resourcehints subresource
+		if len(hints) > 0 {
+			pod := statuscopy.(*corev1.Pod)
+			pod.Status.ResourceHints = hints
+			Expect(c.SubResource("resourcehints").Update(ctx, pod)).To(Succeed())
+		}
 
 		// Re-get the object to grab the updated spec and status
 		Expect(c.Get(ctx, client.ObjectKeyFromObject(object), object)).To(Succeed())
@@ -909,6 +919,15 @@ func ExpectMetricHistogramSampleCountValue(metricName string, expectedValue uint
 	metric, ok := FindMetricWithLabelValues(metricName, labels)
 	Expect(ok).To(BeTrue(), "Metric "+metricName+" should be available")
 	Expect(lo.FromPtr(metric.Histogram.SampleCount)).To(Equal(expectedValue), "Metric "+metricName+" should have the expected value")
+}
+
+// ExpectResourceHints replaces the pod's status.resourceHints through the pods/resourcehints subresource.
+func ExpectResourceHints(ctx context.Context, c client.Client, pod *corev1.Pod, hints ...corev1.PodResourceHint) {
+	GinkgoHelper()
+	Expect(c.Get(ctx, client.ObjectKeyFromObject(pod), pod)).To(Succeed())
+	pod.Status.ResourceHints = hints
+	Expect(c.SubResource("resourcehints").Update(ctx, pod)).To(Succeed())
+	Expect(c.Get(ctx, client.ObjectKeyFromObject(pod), pod)).To(Succeed())
 }
 
 func ExpectManualBinding(ctx context.Context, c client.Client, pod *corev1.Pod, node *corev1.Node) {

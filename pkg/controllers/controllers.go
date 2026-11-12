@@ -75,21 +75,7 @@ import (
 )
 
 type ControllerOptions struct {
-	registrationHooks   []cloudprovider.NodeLifecycleHook
-	enableVPAPrediction bool
-}
-
-// WithVPAPrediction enables the VPA prediction controller as the prediction source.
-// When enabled alongside the PredictionEnabled feature gate, Karpenter uses VPA
-// recommendations to size nodes during provisioning and disruption. With the gate
-// enabled, a prediction source must be registered to mark the prediction store
-// hydrated, or provisioning and disruption wait indefinitely. Only VPAs targeting
-// built-in workloads (Deployment, StatefulSet, DaemonSet, ReplicaSet, Job, CronJob,
-// ReplicationController) are applied.
-func WithVPAPrediction() option.Function[ControllerOptions] {
-	return func(o *ControllerOptions) {
-		o.enableVPAPrediction = true
-	}
+	registrationHooks []cloudprovider.NodeLifecycleHook
 }
 
 // WithRegistrationHook registers a hook that blocks Karpenter from marking a node as registered
@@ -223,9 +209,6 @@ func NewControllers(
 			deletionCostQueue,
 			deletioncost.NewController(clock, kubeClient, cloudProvider, cluster, deletionCostQueue),
 		)
-	}
-	if o.enableVPAPrediction && options.FromContext(ctx).FeatureGates.PredictionEnabled {
-		controllers = append(controllers, informer.NewVPAController(kubeClient, predictionStore, cluster, recorder))
 	}
 
 	return controllers

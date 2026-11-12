@@ -159,6 +159,10 @@ func NewEnvironment(options ...option.Function[EnvironmentOptions]) *Environment
 		environment.ControlPlane.GetAPIServer().Configure().Set("feature-gates", "MinDomainsInPodTopologySpread=true")
 	}
 
+	if gates := env.WithDefaultString("KUBE_APISERVER_FEATURE_GATES", ""); gates != "" {
+		environment.ControlPlane.GetAPIServer().Configure().Set("feature-gates", gates)
+	}
+
 	_ = lo.Must(environment.Start())
 
 	// Apply any config overrides

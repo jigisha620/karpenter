@@ -603,12 +603,7 @@ func (s *Scheduler) updateCachedPodData(ctx context.Context, p *corev1.Pod) {
 		// preferred node affinity.  Only required node affinities can actually reduce pod domains.
 		strictRequirements = scheduling.NewStrictPodRequirements(p)
 	}
-	var requests corev1.ResourceList
-	if s.predictionStore == nil || !s.deletingPodUIDs.Has(p.UID) {
-		requests = resources.RequestsForPods(p)
-	} else {
-		requests = s.predictionStore.PredictedRequests(ctx, s.cachedOwnerResolutions, p)
-	}
+	requests := s.requestsForPod(ctx, p)
 	data := &PodData{
 		Requests:                 requests,
 		Requirements:             requirements,
@@ -622,6 +617,23 @@ func (s *Scheduler) updateCachedPodData(ctx context.Context, p *corev1.Pod) {
 		data.ResourceClaims, data.ResourceClaimErr = s.resolvePodClaims(ctx, p)
 	}
 	s.cachedPodData[p.UID] = data
+}
+
+// requestsForPod sizes a pod for the simulation. Pods being moved off their nodes use their replacement hint when the
+// PodResourceHints gate is on and they have one, else the prediction store when set, else today's requests.
+func (s *Scheduler) requestsForPod(ctx context.Context, p *corev1.Pod) corev1.ResourceList {
+	if !s.deletingPodUIDs.Has(p.UID) {
+		return resources.RequestsForPods(p)
+	}
+	if karpopts.FromContext(ctx).FeatureGates.PodResourceHints {
+		if hinted, ok := resources.HintedPodRequests(p); ok {
+			return hinted
+		}
+	}
+	if s.predictionStore != nil {
+		return s.predictionStore.PredictedRequests(ctx, s.cachedOwnerResolutions, p)
+	}
+	return resources.RequestsForPods(p)
 }
 
 func (s *Scheduler) add(ctx context.Context, pod *corev1.Pod) error {
@@ -1030,11 +1042,7 @@ func buildDaemonOverheadGroups(ctx context.Context, store *prediction.Store, nod
 			} else {
 				var overhead corev1.ResourceList
 				if len(compatible) > 0 {
-					if store == nil {
-						overhead = resources.RequestsForPods(compatible...)
-					} else {
-						overhead = store.PredictedRequests(ctx, nil, compatible...)
-					}
+					overhead = daemonOverhead(ctx, store, compatible)
 				}
 				hostPortUsage := scheduling.NewHostPortUsage()
 				for _, p := range compatible {
@@ -1050,6 +1058,31 @@ func buildDaemonOverheadGroups(ctx context.Context, store *prediction.Store, nod
 		result := lo.Map(lo.Values(groups), func(g *DaemonOverheadGroup, _ int) DaemonOverheadGroup { return *g })
 		return nct, result
 	})
+}
+
+// daemonOverhead sizes DaemonSet pods for a new node. With the PodResourceHints gate on, a DaemonSet pod with a
+// replacement hint is sized by it, since the pod on the new node is a replacement.
+func daemonOverhead(ctx context.Context, store *prediction.Store, pods []*corev1.Pod) corev1.ResourceList {
+	useHints := karpopts.FromContext(ctx).FeatureGates.PodResourceHints
+	var requests []corev1.ResourceList
+	var rest []*corev1.Pod
+	for _, p := range pods {
+		if useHints {
+			if hinted, ok := resources.HintedPodRequests(p); ok {
+				requests = append(requests, hinted)
+				continue
+			}
+		}
+		rest = append(rest, p)
+	}
+	if len(rest) > 0 {
+		if store == nil {
+			requests = append(requests, resources.RequestsForPods(rest...))
+		} else {
+			requests = append(requests, store.PredictedRequests(ctx, nil, rest...))
+		}
+	}
+	return resources.Merge(requests...)
 }
 
 // podSetKey creates a deterministic key from a list of pods for grouping.

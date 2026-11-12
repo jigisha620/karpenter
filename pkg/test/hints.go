@@ -14,18 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package crds
+package test
 
 import (
-	_ "embed"
+	"sort"
 
-	"github.com/awslabs/operatorpkg/object"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
-//go:embed autoscaling.k8s.io_verticalpodautoscalers.yaml
-var VPACRD []byte
-
-var CRDs = []*apiextensionsv1.CustomResourceDefinition{
-	object.Unmarshal[apiextensionsv1.CustomResourceDefinition](VPACRD),
+// ContainerHints builds ResourceHintValues with per-container requests, sorted by container name.
+func ContainerHints(containers map[string]corev1.ResourceList) *corev1.ResourceHintValues {
+	values := &corev1.ResourceHintValues{}
+	for name, requests := range containers {
+		values.Containers = append(values.Containers, corev1.ContainerResourceHint{Name: name, Requests: requests})
+	}
+	sort.Slice(values.Containers, func(i, j int) bool { return values.Containers[i].Name < values.Containers[j].Name })
+	return values
 }
